@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Kamui Heart Vinho e Rosa</title>
+
+<style>
+body{
+    margin:0;
+    overflow:hidden;
+    background:black;
+}
+canvas{
+    display:block;
+}
+</style>
+</head>
+
+<body>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+function resize(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
+
+let mouse = { x: canvas.width/2, y: canvas.height/2 };
+let state = "normal";
+let whiten = 0;
+let timer = 0;
+
+const EVENT_RADIUS = 200;
+const CORE_RADIUS = 12;
+
+const colorPalette = ["#800000", "#b30000", "#ff66cc", "#ff99cc"];
+
+window.addEventListener("mousemove", e=>{
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+});
+
+window.addEventListener("click", ()=>{
+    if(state === "normal"){
+        state = "whitening";
+        whiten = 0;
+    }
+});
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random()-0.5)*2;
+        this.vy = (Math.random()-0.5)*2;
+        this.alpha = 1;
+        this.color = color;
+        this.size = 2 + Math.random()*2;
+    }
+
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.alpha -= 0.02;
+    }
+
+    draw() {
+        ctx.globalAlpha = this.alpha;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI*2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+}
+
+class Word{
+    constructor(){
+        this.reset();
+        this.particles = [];
+        this.colorIndex = Math.floor(Math.random()*colorPalette.length);
+        this.floatOffset = Math.random()*Math.PI*2;
+    }
+
+    reset(){
+        this.x = Math.random()*canvas.width;
+        this.y = Math.random()*canvas.height;
+        this.baseSize = 18 + Math.random()*8;
+        this.size = this.baseSize;
+        this.state = "free";
+        this.angle = 0;
+        this.radius = 0;
+        this.angularSpeed = 0.05 + Math.random()*0.02;
+        this.spiralSpeed = 0.3 + Math.random()*0.2;
+        this.vx = 0;
+        this.vy = 0;
+    }
+
+    update(){
+        let dx = mouse.x - this.x;
+        let dy = mouse.y - this.y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+
+        if((state === "normal" || state === "whitening") && this.state === "free"){
+            let pullRadius = EVENT_RADIUS + 40;
+
+            if(dist < pullRadius){
+                this.angle = Math.atan2(dy, dx);
+
+                let force = Math.min(this.spiralSpeed*3, dist * 0.1);
+                this.radius = dist - force;
+
+                this.angle += this.angularSpeed;
+
+                this.x = mouse.x - Math.cos(this.angle)*this.radius;
+                this.y = mouse.y - Math.sin(this.angle)*this.radius;
+
+                this.size = this.baseSize * Math.max(this.radius/EVENT_RADIUS, 0.2);
+
+                if(this.radius <= CORE_RADIUS){
+                    this.state = "sucked";
+                    this.size = 0;
+                }
+            }
+        }
+
+        if(state === "exploding" && this.state === "exploding"){
+            this.x += this.vx;
+            this.y += this.vy;
+
+            if(Math.random() < 0.3){
+                this.particles.push(
+                    new Particle(
+                        this.x,
+                        this.y,
+                        colorPalette[Math.floor(Math.random()*colorPalette.length)]
+                    )
+                );
+            }
+        }
+
+        if(this.state === "free"){
+            this.y += Math.sin(Date.now()/500 + this.floatOffset) * 0.3;
+        }
+
+        this.particles.forEach(p => p.update());
+        this.particles = this.particles.filter(p => p.alpha > 0);
+    }
+
+    draw(){
+        if(this.state !== "sucked"){
+            let color = colorPalette[this.colorIndex];
+
+            ctx.fillStyle = color;
+            ctx.font = this.size + "px Arial";
+            ctx.fillText("Labubu", this.x, this.y);
+
+            if(Date.now()%500 < 16){
+                this.colorIndex = (this.colorIndex + 1) % colorPalette.length;
+            }
+        }
+
+        this.particles.forEach(p => p.draw());
+    }
+}
+
+let words = [];
+for(let i=0;i<120;i++){
+    words.push(new Word());
+}
+
+function drawBlackHole(){
+    let g = ctx.createRadialGradient(
+        mouse.x, mouse.y, 0,
+        mouse.x, mouse.y, EVENT_RADIUS
+    );
+
+    g.addColorStop(0, "rgba(0,0,0,1)");
+    g.addColorStop(0.3, "rgba(50,0,50,0.7)");
+    g.addColorStop(0.6, "rgba(100,0,100,0.3)");
+    g.addColorStop(1, "rgba(255,0,120,0)");
+
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(mouse.x, mouse.y, EVENT_RADIUS, 0, Math.PI*2);
+    ctx.fill();
+}
+
+function animate(){
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    words.forEach(w=>{
+        w.update();
+        w.draw();
+    });
+
+    if(state === "normal" || state === "whitening"){
+        drawBlackHole();
+    }
+
+    if(state === "whitening"){
+        whiten += 0.003;
+
+        ctx.fillStyle = "rgba(255,220,235,"+whiten+")";
+        ctx.fillRect(0,0,canvas.width,canvas.height);
+
+        if(whiten >= 1){
+
+            state = "exploding";
+            timer = 0;
+
+            let absorbed = words
+                .filter(w=>w.state === "sucked")
+                .slice(0,50);
+
+            let total = absorbed.length || 1;
+
+            absorbed.forEach((w,i)=>{
+
+                w.state = "exploding";
+                w.x = canvas.width/2;
+                w.y = canvas.height/2;
+
+                let t = (i/total) * Math.PI * 2;
+
+                let hx = 16*Math.pow(Math.sin(t),3);
+                let hy = 13*Math.cos(t)
+                       -5*Math.cos(2*t)
+                       -2*Math.cos(3*t)
+                       -Math.cos(4*t);
+
+                let scale = 15;
+
+                w.vx = hx * scale * 0.015;
+                w.vy = -hy * scale * 0.015;
+                w.size = 28;
+            });
+        }
+    }
+
+    if(state === "exploding"){
+        timer++;
+
+        if(timer > 400){
+            words.forEach(w=>w.reset());
+            state = "normal";
+            whiten = 0;
+        }
+    }
+
+    requestAnimationFrame(animate);
+}
+
+animate();
+
+</script>
+</body>
+</html>
